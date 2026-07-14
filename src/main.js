@@ -70,18 +70,23 @@ function renderDashboard(data) {
   document.getElementById('kpi-pedidos').textContent = pedidosActivos;
 
   const activityList = document.getElementById('recent-activity-list');
-  activityList.innerHTML = data.pedidos.slice(0, 5).map(p => `
-    <div class="flex items-start">
-      <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center mr-3 mt-1">
-        <span class="material-symbols-outlined text-slate-500 text-sm">receipt</span>
+  
+  if (data.pedidos.length === 0) {
+    activityList.innerHTML = `<div class="text-sm text-slate-500 text-center py-8">📭 No hay pedidos en este momento</div>`;
+  } else {
+    activityList.innerHTML = data.pedidos.slice(0, 5).map(p => `
+      <div class="flex items-start">
+        <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center mr-3 mt-1">
+          <span class="material-symbols-outlined text-slate-500 text-sm">receipt</span>
+        </div>
+        <div>
+          <p class="text-sm font-medium text-textMain">Pedido ${p.id} - Mesa ${p.mesa}</p>
+          <p class="text-xs text-slate-500">${p.detalles} • <span class="font-medium ${getStatusColor(p.estado)} px-1.5 py-0.5 rounded">${p.estado}</span></p>
+        </div>
+        <span class="ml-auto text-xs text-slate-400">${calculateTimeElapsed(p.fecha)}</span>
       </div>
-      <div>
-        <p class="text-sm font-medium text-textMain">Pedido ${p.id} - Mesa ${p.mesa}</p>
-        <p class="text-xs text-slate-500">${p.detalles} • <span class="font-medium ${getStatusColor(p.estado)} px-1.5 py-0.5 rounded">${p.estado}</span></p>
-      </div>
-      <span class="ml-auto text-xs text-slate-400">${calculateTimeElapsed(p.fecha)}</span>
-    </div>
-  `).join('') || `<div class="text-sm text-slate-500 text-center">No hay pedidos</div>`;
+    `).join('');
+  }
 }
 
 function renderPedidos(data) {
@@ -103,6 +108,17 @@ function renderPedidos(data) {
 
 function renderMesas(data) {
   const container = document.getElementById('mesas-grid');
+  
+  if (data.mesas.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full py-20 text-center">
+        <p class="text-slate-400 mb-2">🪑 No hay mesas configuradas</p>
+        <p class="text-sm text-slate-500">Verifica que la hoja "Mesas" en Google Sheets tenga datos</p>
+      </div>
+    `;
+    return;
+  }
+  
   container.innerHTML = data.mesas.map(m => {
     let borderColor = 'border-success';
     let bgColor = 'bg-white';
@@ -124,7 +140,7 @@ function renderMesas(data) {
       ` : ''}
     </div>
     `;
-  }).join('') || `<div class="col-span-full text-center text-slate-400 py-10">No hay mesas</div>`;
+  }).join('');
 }
 
 function renderCocina(data) {
@@ -231,17 +247,21 @@ window.pagarYLiberarMesa = (id, mesa) => {
   }
 };
 
+// --- VARIABLE GLOBAL PARA EL CHART ---
+let ventasChart = null;
+
 // --- INIT CHART.JS ---
 function initChart() {
   const ctx = document.getElementById('ventasChart');
   if(!ctx) return;
-  new Chart(ctx, {
+  
+  ventasChart = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
       datasets: [{
         label: 'Ventas (S/)',
-        data: [120, 190, 150, 250, 320, 410, 380],
+        data: [0, 0, 0, 0, 0, 0, 0],
         backgroundColor: '#2563EB',
         borderRadius: 4
       }]
@@ -258,6 +278,40 @@ function initChart() {
   });
 }
 
+/**
+ * Calcula ventas de los últimos 7 días desde los pedidos
+ */
+function calcularVentasPor7Dias(pedidos) {
+  const ventas = [0, 0, 0, 0, 0, 0, 0]; // Lun, Mar, Mié, Jue, Vie, Sáb, Dom
+  const hoy = new Date();
+  
+  pedidos.forEach(pedido => {
+    const fecha = new Date(pedido.fecha);
+    const dia = fecha.getDay(); // 0=Dom, 1=Lun, 2=Mar, etc
+    
+    // Mapear a índice del array (0=Lun, 1=Mar, ..., 6=Dom)
+    const indice = dia === 0 ? 6 : dia - 1;
+    
+    ventas[indice] += parseFloat(pedido.total) || 0;
+  });
+  
+  return ventas;
+}
+
+/**
+ * Actualiza el gráfico de ventas con datos reales
+ */
+function actualizarGraficoVentas(data) {
+  if (!ventasChart) return;
+  
+  const ventasPor7Dias = calcularVentasPor7Dias(data.pedidos);
+  
+  ventasChart.data.datasets[0].data = ventasPor7Dias;
+  ventasChart.update();
+  
+  console.log('📊 Gráfico actualizado:', ventasPor7Dias);
+}
+
 // --- SUSCRIPCIÓN AL STORE ---
 store.subscribe((data) => {
   renderDashboard(data);
@@ -265,35 +319,54 @@ store.subscribe((data) => {
   renderMesas(data);
   renderCocina(data);
   renderCaja(data);
+  actualizarGraficoVentas(data); // Actualizar gráfico con datos reales
 });
 
 // --- INICIALIZACIÓN ---
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('🚀 Iniciando aplicación...');
+  console.log('🚀 Iniciando aplicación - Cargando datos de Google Sheets...');
   
   initChart();
   
-  // Cargar datos iniciales desde Google Sheets
-  const loaded = await store.loadData();
+  // Limpiar cualquier dato ficticio previo
+  store.data = {
+    pedidos: [],
+    mesas: []
+  };
+
+  // Cargar datos SIEMPRE desde Google Sheets (nunca usar fake data)
+  let intentos = 0;
+  const maxIntentos = 5;
   
-  if (loaded) {
-    console.log('✅ Datos cargados correctamente');
-    // Auto-refresh cada 10 segundos
-    store.startAutoRefresh(10000);
-  } else {
-    console.warn('⚠️ No se pudieron cargar datos iniciales, usando datos de prueba');
-    store.data = {
-      pedidos: [
-        { id: "P-101", mesa: 2, cliente: "Mesa 2", detalles: "2x Ceviche, 1x Chicha", total: 65.00, estado: "Pendiente", fecha: new Date().toISOString() },
-      ],
-      mesas: [
-        { numero: 1, estado: "Libre", tiempo: "-", total: 0 },
-        { numero: 2, estado: "Ocupada", tiempo: "12 min", total: 65.00 },
-        { numero: 3, estado: "Libre", tiempo: "-", total: 0 },
-        { numero: 4, estado: "Libre", tiempo: "-", total: 0 },
-        { numero: 5, estado: "Libre", tiempo: "-", total: 0 },
-      ]
-    };
-    store.notify();
+  while (intentos < maxIntentos) {
+    const loaded = await store.loadData();
+    
+    if (loaded) {
+      console.log('✅ Datos cargados correctamente desde Google Sheets');
+      console.log('📊 Pedidos:', store.data.pedidos.length);
+      console.log('🪑 Mesas:', store.data.mesas.length);
+      
+      // Auto-refresh cada 10 segundos
+      store.startAutoRefresh(10000);
+      break;
+    } else {
+      intentos++;
+      console.warn(`⚠️ Intento ${intentos}/${maxIntentos} fallido. Reintentando en 2 segundos...`);
+      
+      if (intentos < maxIntentos) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
   }
+  
+  if (intentos === maxIntentos) {
+    console.error('❌ No se pudieron cargar datos de Google Sheets después de varios intentos');
+    console.error('Verifica que:');
+    console.error('1. La URL del Apps Script sea correcta');
+    console.error('2. El Apps Script esté deployado');
+    console.error('3. Las hojas "Pedidos" y "Mesas" existan en Google Sheets');
+  }
+  
+  // Mostrar estado inicial (vacío o con datos reales)
+  store.notify();
 });
