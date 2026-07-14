@@ -200,33 +200,81 @@
            </div>
         </section>
 
+        <!-- VISTA: PRODUCTOS -->
+        <section id="view-productos" class="view-section">
+          <div class="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h3 class="text-lg font-semibold text-textMain">Menú del día</h3>
+              <p class="text-sm text-slate-500">Los platos se cargan desde Google Sheets y se actualizan automáticamente.</p>
+            </div>
+            <button type="button" onclick="window.abrirFormularioPedido('Mesa 1')" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+              + Crear pedido rápido
+            </button>
+          </div>
+          <div id="productos-grid" class="grid gap-4"></div>
+        </section>
+
         <!-- VISTA: COCINA (KANBAN) -->
         <section id="view-cocina" class="view-section h-full flex flex-col">
+          <div class="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-emerald-700">Pantalla grande de cocina</p>
+                <h3 class="text-lg font-semibold text-textMain">Monitorea pedidos en tiempo real</h3>
+              </div>
+              <div class="rounded-full bg-white px-3 py-2 text-sm text-slate-600 shadow-sm flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full bg-success animate-pulse"></span>
+                <span id="live-status">En tiempo real</span>
+                <span class="text-slate-400">•</span>
+                <span id="last-updated">Actualizando…</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-4 grid gap-3 md:grid-cols-3">
+            <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p class="text-sm text-amber-700">Pendientes</p>
+              <p class="text-2xl font-semibold text-textMain" id="kitchen-stats-pending">0</p>
+            </div>
+            <div class="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+              <p class="text-sm text-blue-700">Preparando</p>
+              <p class="text-2xl font-semibold text-textMain" id="kitchen-stats-preparando">0</p>
+            </div>
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <p class="text-sm text-emerald-700">Listos</p>
+              <p class="text-2xl font-semibold text-textMain" id="kitchen-stats-listo">0</p>
+            </div>
+          </div>
+
           <div class="flex-1 flex gap-6 overflow-x-auto pb-4">
-            <!-- Columna: Pendiente -->
             <div class="flex-none w-80 bg-slate-50 rounded-xl border border-slate-200 flex flex-col">
               <div class="p-4 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-slate-50 rounded-t-xl z-10">
                 <h3 class="font-semibold text-textMain flex items-center">
                   <span class="w-2 h-2 rounded-full bg-warning mr-2"></span>Pendiente
                 </h3>
-                <span class="bg-slate-200 text-slate-600 text-xs py-0.5 px-2 rounded-full" id="count-pendiente">0</span>
+                <span class="bg-slate-200 text-slate-600 text-xs py-0.5 px-2 rounded-full">Nuevo</span>
               </div>
-              <div class="p-3 flex-1 overflow-y-auto space-y-3" id="kanban-pendiente">
-                <!-- Tarjetas -->
-              </div>
+              <div class="p-3 flex-1 overflow-y-auto space-y-3" id="kanban-pendiente"></div>
             </div>
 
-            <!-- Columna: Preparando -->
             <div class="flex-none w-80 bg-slate-50 rounded-xl border border-slate-200 flex flex-col">
               <div class="p-4 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-slate-50 rounded-t-xl z-10">
                 <h3 class="font-semibold text-textMain flex items-center">
                   <span class="w-2 h-2 rounded-full bg-primary mr-2"></span>Preparando
                 </h3>
-                <span class="bg-slate-200 text-slate-600 text-xs py-0.5 px-2 rounded-full" id="count-preparando">0</span>
+                <span class="bg-slate-200 text-slate-600 text-xs py-0.5 px-2 rounded-full">En curso</span>
               </div>
-              <div class="p-3 flex-1 overflow-y-auto space-y-3" id="kanban-preparando">
-                 <!-- Tarjetas -->
+              <div class="p-3 flex-1 overflow-y-auto space-y-3" id="kanban-preparando"></div>
+            </div>
+
+            <div class="flex-none w-80 bg-slate-50 rounded-xl border border-slate-200 flex flex-col">
+              <div class="p-4 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-slate-50 rounded-t-xl z-10">
+                <h3 class="font-semibold text-textMain flex items-center">
+                  <span class="w-2 h-2 rounded-full bg-success mr-2"></span>Listos
+                </h3>
+                <span class="bg-slate-200 text-slate-600 text-xs py-0.5 px-2 rounded-full">Para servir</span>
               </div>
+              <div class="p-3 flex-1 overflow-y-auto space-y-3" id="kanban-listo"></div>
             </div>
           </div>
         </section>
@@ -242,6 +290,57 @@
         </section>
 
       </main>
+    </div>
+
+    <!-- Modal de pedido -->
+    <div id="order-modal" class="fixed inset-0 z-30 hidden bg-slate-950/70 backdrop-blur-sm">
+      <div class="flex min-h-full items-center justify-center p-4">
+        <div class="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
+          <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+            <div>
+              <h3 class="text-lg font-semibold text-textMain">Nuevo pedido</h3>
+              <p class="text-sm text-slate-500">Arma la orden desde el menú dinámico.</p>
+            </div>
+            <button id="order-modal-close" type="button" class="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+
+          <div class="grid gap-6 p-6 lg:grid-cols-[1.2fr_0.8fr]">
+            <div class="space-y-4">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-600">Mesa</label>
+                <select id="order-mesa" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></select>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-600">Menú disponible</label>
+                <div id="order-menu-list" class="max-h-[320px] space-y-4 overflow-y-auto pr-1"></div>
+              </div>
+            </div>
+
+            <div class="space-y-4">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-600">Detalle del pedido</label>
+                <textarea id="order-note" rows="4" placeholder="Ej. Sin cebolla, entregar pronto..." class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></textarea>
+              </div>
+              <div>
+                <div class="mb-2 flex items-center justify-between">
+                  <label class="text-sm font-medium text-slate-600">Productos agregados</label>
+                  <span class="text-xs text-slate-400">Total</span>
+                </div>
+                <div id="order-summary-list" class="space-y-2"></div>
+                <div class="mt-4 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-3">
+                  <span class="text-sm font-medium text-slate-600">Total estimado</span>
+                  <span id="order-total" class="text-lg font-semibold text-textMain">S/ 0.00</span>
+                </div>
+              </div>
+              <button id="order-submit" type="button" class="w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 transition-colors disabled:cursor-not-allowed disabled:bg-slate-300">
+                Crear Pedido
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
   </body>

@@ -4,7 +4,9 @@ class Store {
   constructor() {
     this.data = {
       pedidos: [],
-      mesas: []
+      mesas: [],
+      platos: [],
+      lastUpdated: null
     };
     this.listeners = [];
     this.autoRefreshInterval = null;
@@ -25,41 +27,48 @@ class Store {
   async loadData() {
     try {
       const response = await fetchGet();
-      
+
       if (response && response.exito) {
-        // Mapear mesas: {mesa: "1", estado: "Libre"} → {numero: 1, estado: "Libre", tiempo: "...", total: 0}
         this.data.mesas = (response.mesas || []).map(m => ({
           numero: isNaN(m.mesa) ? m.mesa : parseInt(m.mesa),
-          estado: m.estado || "Libre",
-          tiempo: "-",
+          estado: m.estado || 'Libre',
+          tiempo: '-',
           total: 0
         }));
 
-        // Mapear comandas a pedidos: 
-        // {idPedido, fecha, mesa, detalle, total} → {id, mesa, fecha, detalles, total, estado}
         this.data.pedidos = (response.comandas || []).map(c => ({
           id: c.idPedido,
           mesa: isNaN(c.mesa) ? c.mesa : parseInt(c.mesa),
           fecha: c.fecha,
           detalles: c.detalle,
           total: parseFloat(c.total) || 0,
-          estado: "Pendiente", // El Apps Script envía comandas pendientes
+          estado: 'Pendiente',
           cliente: `Mesa ${c.mesa}`
         }));
 
-        console.log("✅ Datos cargados desde Google Sheets:", {
+        this.data.platos = (response.platos || []).map(p => ({
+          categoria: p.categoria,
+          nombre: p.nombre,
+          precio: parseFloat(p.precio) || 0,
+          disponible: true
+        }));
+
+        this.data.lastUpdated = new Date().toISOString();
+
+        console.log('✅ Datos cargados desde Google Sheets:', {
           mesas: this.data.mesas,
-          pedidos: this.data.pedidos
+          pedidos: this.data.pedidos,
+          platos: this.data.platos
         });
-        
+
         this.notify();
         return true;
       } else {
-        console.error("❌ Error al cargar datos:", response?.mensaje);
+        console.error('❌ Error al cargar datos:', response?.mensaje);
         return false;
       }
     } catch (error) {
-      console.error("❌ Error en loadData:", error);
+      console.error('❌ Error en loadData:', error);
       return false;
     }
   }
@@ -69,7 +78,7 @@ class Store {
    */
   async crearPedido(mesa, detalle, total) {
     const payload = {
-      accion: "nuevo_pedido",
+      accion: 'nuevo_pedido',
       mesa: mesa.toString(),
       detalle: detalle,
       total: parseFloat(total)
@@ -78,16 +87,15 @@ class Store {
     try {
       const result = await fetchPost(payload);
       if (result.exito) {
-        console.log("✅ Pedido creado:", result);
-        // Recargar datos para sincronizar
+        console.log('✅ Pedido creado:', result);
         await this.loadData();
         return result;
       } else {
-        console.error("❌ Error al crear pedido:", result.mensaje);
+        console.error('❌ Error al crear pedido:', result.mensaje);
         return result;
       }
     } catch (error) {
-      console.error("❌ Error en crearPedido:", error);
+      console.error('❌ Error en crearPedido:', error);
       return { exito: false, mensaje: error.message };
     }
   }
@@ -97,23 +105,22 @@ class Store {
    */
   async liberarMesa(mesa) {
     const payload = {
-      accion: "liberar_mesa",
+      accion: 'liberar_mesa',
       mesa: mesa.toString()
     };
 
     try {
       const result = await fetchPost(payload);
       if (result.exito) {
-        console.log("✅ Mesa liberada:", result);
-        // Recargar datos para sincronizar
+        console.log('✅ Mesa liberada:', result);
         await this.loadData();
         return result;
       } else {
-        console.error("❌ Error al liberar mesa:", result.mensaje);
+        console.error('❌ Error al liberar mesa:', result.mensaje);
         return result;
       }
     } catch (error) {
-      console.error("❌ Error en liberarMesa:", error);
+      console.error('❌ Error en liberarMesa:', error);
       return { exito: false, mensaje: error.message };
     }
   }
@@ -123,7 +130,7 @@ class Store {
    */
   startAutoRefresh(intervalMs = 5000) {
     if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
-    
+
     this.autoRefreshInterval = setInterval(() => {
       this.loadData();
     }, intervalMs);
@@ -138,7 +145,7 @@ class Store {
     if (this.autoRefreshInterval) {
       clearInterval(this.autoRefreshInterval);
       this.autoRefreshInterval = null;
-      console.log("⏹️ Auto-refresh detenido");
+      console.log('⏹️ Auto-refresh detenido');
     }
   }
 }
