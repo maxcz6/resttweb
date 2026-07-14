@@ -1,22 +1,31 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbwfYIZTbk-iBEpFaxhqWv-2yANWGv62hfRZVEUaztk1A49cQwjlg_yozMvbdwztrSft/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxGUjJSkS0U7LUmkF50ckzkXsjV0a-4Z_tAp_xrSE9Z95QgM-1D2GH0bl1irWJdv-QU/exec";
 
 /**
- * Realiza una petición GET a la API
+ * Obtiene datos reales de Google Sheets: mesas y comandas pendientes
  */
 export async function fetchGet() {
   try {
-    const response = await fetch(API_URL);
-    if (!response.ok) throw new Error("Error en la red");
+    const response = await fetch(API_URL, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    
+    if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+    
     const data = await response.json();
     return data;
   } catch (error) {
     console.error("Error fetching data:", error);
-    return null;
+    return { exito: false, mensaje: error.message, mesas: [], comandas: [] };
   }
 }
 
 /**
- * Realiza una petición POST a la API (usando text/plain para evitar CORS preflight según la arquitectura actual)
+ * Envía datos a Google Sheets: nuevo pedido o liberación de mesa
+ * @param {Object} payload - {accion, mesa, detalle, total} para nuevo_pedido
+ *                         o {accion, mesa} para liberar_mesa
  */
 export async function fetchPost(payload) {
   try {
@@ -29,9 +38,10 @@ export async function fetchPost(payload) {
     });
     
     const result = await response.json();
+    console.log("Response from Apps Script:", result);
     return result;
   } catch (error) {
     console.error("Error posting data:", error);
-    return { success: false, error: error.message };
+    return { exito: false, mensaje: error.message };
   }
 }

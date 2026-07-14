@@ -7,6 +7,7 @@ class Store {
       mesas: []
     };
     this.listeners = [];
+    this.autoRefreshInterval = null;
   }
 
   subscribe(listener) {
@@ -17,58 +18,128 @@ class Store {
     this.listeners.forEach(listener => listener(this.data));
   }
 
+  /**
+   * Carga datos desde Google Sheets
+   * Mapea la estructura del Apps Script a la estructura del dashboard
+   */
   async loadData() {
-    const response = await fetchGet();
-    if (response && response.success) {
-      this.data.pedidos = response.data.pedidos || [];
-      this.data.mesas = response.data.mesas || [];
-      this.notify();
-    }
-  }
+    try {
+      const response = await fetchGet();
+      
+      if (response && response.exito) {
+        // Mapear mesas: {mesa: "1", estado: "Libre"} → {numero: 1, estado: "Libre", tiempo: "...", total: 0}
+        this.data.mesas = (response.mesas || []).map(m => ({
+          numero: isNaN(m.mesa) ? m.mesa : parseInt(m.mesa),
+          estado: m.estado || "Libre",
+          tiempo: "-",
+          total: 0
+        }));
 
-  async updateEstadoPedido(id, nuevoEstado) {
-    // Optimistic UI Update
-    const pedidoIndex = this.data.pedidos.findIndex(p => p.id === id);
-    let oldEstado = null;
-    if (pedidoIndex !== -1) {
-      oldEstado = this.data.pedidos[pedidoIndex].estado;
-      this.data.pedidos[pedidoIndex].estado = nuevoEstado;
-      this.notify();
-    }
+        // Mapear comandas a pedidos: 
+        // {idPedido, fecha, mesa, detalle, total} → {id, mesa, fecha, detalles, total, estado}
+        this.data.pedidos = (response.comandas || []).map(c => ({
+          id: c.idPedido,
+          mesa: isNaN(c.mesa) ? c.mesa : parseInt(c.mesa),
+          fecha: c.fecha,
+          detalles: c.detalle,
+          total: parseFloat(c.total) || 0,
+          estado: "Pendiente", // El Apps Script envía comandas pendientes
+          cliente: `Mesa ${c.mesa}`
+        }));
 
-    const payload = {
-      accion: "actualizar_estado",
-      datos: { id: id, estado: nuevoEstado }
-    };
-    
-    const result = await fetchPost(payload);
-    if (!result || !result.success) {
-      console.error("Error al actualizar pedido", result);
-      // Rollback
-      if (pedidoIndex !== -1 && oldEstado) {
-        this.data.pedidos[pedidoIndex].estado = oldEstado;
+        console.log("✅ Datos cargados desde Google Sheets:", {
+          mesas: this.data.mesas,
+          pedidos: this.data.pedidos
+        });
+        
         this.notify();
+        return true;
+      } else {
+        console.error("❌ Error al cargar datos:", response?.mensaje);
+        return false;
       }
-    } else {
-      // Refresh to ensure sync
-      await this.loadData();
+    } catch (error) {
+      console.error("❌ Error en loadData:", error);
+      return false;
     }
   }
 
-  async cobrarPedido(id, mesa) {
+  /**
+   * Crea un nuevo pedido en Google Sheets
+   */
+  async crearPedido(mesa, detalle, total) {
     const payload = {
-      accion: "cobrar_pedido",
-      datos: { id: id, mesa: mesa }
+      accion: "nuevo_pedido",
+      mesa: mesa.toString(),
+      detalle: detalle,
+      total: parseFloat(total)
     };
-    
-    // Removemos temporalmente en UI
-    this.data.pedidos = this.data.pedidos.filter(p => p.id !== id);
-    const mesaIdx = this.data.mesas.findIndex(m => m.numero == mesa);
-    if(mesaIdx !== -1) this.data.mesas[mesaIdx].estado = "Libre";
-    this.notify();
 
-    const result = await fetchPost(payload);
-    await this.loadData();
+    try {
+      const result = await fetchPost(payload);
+      if (result.exito) {
+        console.log("✅ Pedido creado:", result);
+        // Recargar datos para sincronizar
+        await this.loadData();
+        return result;
+      } else {
+        console.error("❌ Error al crear pedido:", result.mensaje);
+        return result;
+      }
+    } catch (error) {
+      console.error("❌ Error en crearPedido:", error);
+      return { exito: false, mensaje: error.message };
+    }
+  }
+
+  /**
+   * Libera una mesa y marca el pedido como cobrado
+   */
+  async liberarMesa(mesa) {
+    const payload = {
+      accion: "liberar_mesa",
+      mesa: mesa.toString()
+    };
+
+    try {
+      const result = await fetchPost(payload);
+      if (result.exito) {
+        console.log("✅ Mesa liberada:", result);
+        // Recargar datos para sincronizar
+        await this.loadData();
+        return result;
+      } else {
+        console.error("❌ Error al liberar mesa:", result.mensaje);
+        return result;
+      }
+    } catch (error) {
+      console.error("❌ Error en liberarMesa:", error);
+      return { exito: false, mensaje: error.message };
+    }
+  }
+
+  /**
+   * Inicia auto-refresh cada X segundos
+   */
+  startAutoRefresh(intervalMs = 5000) {
+    if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
+    
+    this.autoRefreshInterval = setInterval(() => {
+      this.loadData();
+    }, intervalMs);
+
+    console.log(`🔄 Auto-refresh iniciado cada ${intervalMs}ms`);
+  }
+
+  /**
+   * Detiene auto-refresh
+   */
+  stopAutoRefresh() {
+    if (this.autoRefreshInterval) {
+      clearInterval(this.autoRefreshInterval);
+      this.autoRefreshInterval = null;
+      console.log("⏹️ Auto-refresh detenido");
+    }
   }
 }
 
